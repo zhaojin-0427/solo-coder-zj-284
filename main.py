@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from datetime import datetime, timedelta
 import uuid
 from typing import Dict, List, Optional
@@ -65,6 +66,38 @@ app = FastAPI(
 app.include_router(zones_router)
 app.include_router(schedules_router)
 app.include_router(pest_disease_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    errors = exc.errors()
+    error_messages = []
+    for error in errors:
+        loc = " -> ".join(str(x) for x in error["loc"])
+        msg = error["msg"]
+        error_messages.append(f"[{loc}] {msg}")
+    
+    message = "参数校验失败: " + "; ".join(error_messages)
+    return JSONResponse(
+        status_code=400,
+        content={
+            "code": 400,
+            "message": message,
+            "data": {"errors": errors}
+        }
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.status_code,
+            "message": exc.detail,
+            "data": None
+        }
+    )
 
 
 @app.post("/api/plants", response_model=ApiResponse, summary="创建植物档案")

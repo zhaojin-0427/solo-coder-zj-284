@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request, Query
+from fastapi.responses import JSONResponse
 from typing import Optional, Dict
 
 from models.pest_disease import (
@@ -11,8 +12,11 @@ from models import ApiResponse
 router = APIRouter(prefix="/api/pest-disease", tags=["病虫害识别与隔离处置"])
 
 
-def api_response(code: int, message: str, data=None) -> Dict:
-    return {"code": code, "message": message, "data": data}
+def api_response(code: int, message: str, data=None) -> JSONResponse:
+    return JSONResponse(
+        status_code=code,
+        content={"code": code, "message": message, "data": data}
+    )
 
 
 @router.post("/report", response_model=ApiResponse, summary="上报植物病虫害症状")
@@ -73,6 +77,14 @@ async def get_records(
     limit: int = Query(100, ge=1, le=500, description="返回数量限制")
 ):
     pest_service = request.app.state.pest_disease_service
+
+    valid_statuses = ["open", "in_treatment", "resolved", "closed"]
+    if status is not None and status not in valid_statuses:
+        return api_response(
+            code=400,
+            message=f"无效的状态参数: {status}，有效值为: {', '.join(valid_statuses)}",
+            data=None
+        )
 
     try:
         records = pest_service.get_all_records(status=status, limit=limit)
