@@ -14,11 +14,12 @@ from models import (
 from watering_engine import WateringEngine
 from plant_database import PLANT_DATABASE, get_plant_info
 from services import (
-    ZoneService, ScheduleService, ConflictService
+    ZoneService, ScheduleService, ConflictService, PestDiseaseService
 )
 from services.reminder_service import ReminderService
 from zone_routes.zones import router as zones_router
 from zone_routes.schedules import router as schedules_router
+from zone_routes.pest_disease import router as pest_disease_router
 
 
 plants_db: Dict[str, Plant] = {}
@@ -41,11 +42,13 @@ async def lifespan(app: FastAPI):
     conflict_service = ConflictService(watering_engine)
     schedule_service = ScheduleService(watering_engine, conflict_service)
     reminder_service = ReminderService(watering_engine)
+    pest_disease_service = PestDiseaseService(watering_engine)
 
     app.state.zone_service = zone_service
     app.state.schedule_service = schedule_service
     app.state.conflict_service = conflict_service
     app.state.reminder_service = reminder_service
+    app.state.pest_disease_service = pest_disease_service
     app.state.plants_db = plants_db
     app.state.watering_engine = watering_engine
 
@@ -61,6 +64,7 @@ app = FastAPI(
 
 app.include_router(zones_router)
 app.include_router(schedules_router)
+app.include_router(pest_disease_router)
 
 
 @app.post("/api/plants", response_model=ApiResponse, summary="创建植物档案")

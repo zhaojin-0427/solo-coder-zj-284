@@ -18,3 +18,12 @@ from models.schedule import (
     Reminder, ReminderChannel, ReminderFrequency, ReminderConfig,
     ReminderGenerateRequest, ReminderListResponse, ReminderStatus
 )
+from models.pest_disease import (
+    SymptomType, PestType, DiseaseType,
+    SeverityLevel, RiskLevel, LeafCondition,
+    PestSignReport, SymptomReport,
+    PestDiseaseCreate, PestDiseaseRecord,
+    TreatmentStep, QuarantineAdvice, ReviewReminder,
+    ZoneSpreadRisk, ActionableAdvice,
+    PestDiseaseAnalysis, TreatmentUpdate, RecordStatusUpdate
+)
