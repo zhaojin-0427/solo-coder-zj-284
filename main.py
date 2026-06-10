@@ -13,6 +13,12 @@ from models import (
 )
 from watering_engine import WateringEngine
 from plant_database import PLANT_DATABASE, get_plant_info
+from services import (
+    ZoneService, ScheduleService, ConflictService
+)
+from services.reminder_service import ReminderService
+from zone_routes.zones import router as zones_router
+from zone_routes.schedules import router as schedules_router
 
 
 plants_db: Dict[str, Plant] = {}
@@ -31,15 +37,30 @@ def api_response(code: int, message: str, data=None) -> JSONResponse:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    zone_service = ZoneService(watering_engine)
+    conflict_service = ConflictService(watering_engine)
+    schedule_service = ScheduleService(watering_engine, conflict_service)
+    reminder_service = ReminderService(watering_engine)
+
+    app.state.zone_service = zone_service
+    app.state.schedule_service = schedule_service
+    app.state.conflict_service = conflict_service
+    app.state.reminder_service = reminder_service
+    app.state.plants_db = plants_db
+    app.state.watering_engine = watering_engine
+
     yield
 
 
 app = FastAPI(
-    title="植物浇水提醒智能分析与适配建议 API",
-    description="基于植物特性、环境数据和蒸发模型的智能浇水预测与养护建议服务",
-    version="1.0.0",
+    title="植物分区养护计划与智能提醒编排 API",
+    description="基于植物特性、环境数据和蒸发模型的智能浇水预测、分区养护、排程编排与智能提醒服务",
+    version="2.0.0",
     lifespan=lifespan
 )
+
+app.include_router(zones_router)
+app.include_router(schedules_router)
 
 
 @app.post("/api/plants", response_model=ApiResponse, summary="创建植物档案")
