@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from enum import Enum
 
 
@@ -61,10 +61,30 @@ class PlantStatus(BaseModel):
     leaf_condition: Optional[str] = Field(None, description="叶片状态描述")
     growth_status: Optional[str] = Field(None, description="生长状态")
     has_new_growth: Optional[bool] = Field(None, description="是否有新生长")
-    pest_signs: Optional[str] = Field(None, description="虫害迹象")
-    disease_signs: Optional[str] = Field(None, description="病害迹象")
-    soil_moisture: Optional[float] = Field(None, description="土壤湿度 (%)")
+    pest_signs: Optional[Union[str, bool]] = Field(None, description="虫害迹象")
+    disease_signs: Optional[Union[str, bool]] = Field(None, description="病害迹象")
+    soil_moisture: Optional[Union[float, str]] = Field(None, description="土壤湿度 (%)")
     notes: Optional[str] = Field(None, description="状态备注")
+
+    @field_validator('pest_signs', 'disease_signs', mode='before')
+    @classmethod
+    def normalize_bool_to_str(cls, v):
+        if isinstance(v, bool):
+            return "有" if v else "无"
+        return v
+
+    @field_validator('soil_moisture', mode='before')
+    @classmethod
+    def normalize_soil_moisture(cls, v):
+        if isinstance(v, str):
+            mapping = {
+                'dry': 20.0,
+                'moist': 60.0,
+                'wet': 85.0,
+                'waterlogged': 95.0
+            }
+            return mapping.get(v.lower(), None)
+        return v
 
 
 class MaintenanceLogCreate(BaseModel):

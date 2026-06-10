@@ -259,7 +259,7 @@ async def get_zone_maintenance_logs(
         )
 
     try:
-        logs = maintenance_service.get_zone_logs(zone_id, limit=limit)
+        logs = maintenance_service.get_zone_logs(zone_id, limit=limit, zone=zone)
     except Exception as e:
         return api_response(
             code=500,
@@ -464,6 +464,8 @@ async def get_maintenance_statistics(
     plants_db = request.app.state.plants_db
     zone_service = request.app.state.zone_service
 
+    zone_param = None
+
     if target_type and target_id:
         if target_type not in ["plant", "zone"]:
             return api_response(
@@ -485,11 +487,13 @@ async def get_maintenance_statistics(
                     message=f"分区ID {target_id} 不存在",
                     data=None
                 )
+            zone_param = zone
 
     try:
         stats = maintenance_service.get_statistics(
             target_type=target_type,
-            target_id=target_id
+            target_id=target_id,
+            zone=zone_param
         )
     except Exception as e:
         return api_response(

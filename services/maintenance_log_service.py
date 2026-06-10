@@ -32,10 +32,12 @@ class MaintenanceLogService:
             updated_at=now
         )
 
-        if data.status_after and data.status_after.health_score is not None:
-            log.effectiveness = self._calculate_initial_effectiveness(
-                data.status_before, data.status_after
-            )
+        log.effectiveness = self._compute_effectiveness(
+            status_before=data.status_before,
+            status_after=data.status_after,
+            observation_result=data.observation_result,
+            follow_up_observations=[]
+        )
 
         self.logs_db[log_id] = log
         return log
@@ -51,13 +53,24 @@ class MaintenanceLogService:
         logs.sort(key=lambda l: l.execution_time, reverse=True)
         return logs[:limit]
 
-    def get_zone_logs(self, zone_id: str, limit: int = 100) -> List[MaintenanceLog]:
-        logs = [
+    def get_zone_logs(
+        self,
+        zone_id: str,
+        limit: int = 100,
+        zone: Optional[Zone] = None
+    ) -> List[MaintenanceLog]:
+        zone_logs = [
             log for log in self.logs_db.values()
             if log.target_type == "zone" and log.target_id == zone_id
         ]
-        logs.sort(key=lambda l: l.execution_time, reverse=True)
-        return logs[:limit]
+        plant_ids = set(zone.plant_ids) if zone else set()
+        plant_logs = [
+            log for log in self.logs_db.values()
+            if log.target_type == "plant" and log.target_id in plant_ids
+        ]
+        all_logs = zone_logs + plant_logs
+        all_logs.sort(key=lambda l: l.execution_time, reverse=True)
+        return all_logs[:limit]
 
     def get_all_logs(
         self,
@@ -88,10 +101,12 @@ class MaintenanceLogService:
             if value is not None:
                 setattr(log, key, value)
 
-        if update.status_after and update.status_after.health_score is not None:
-            log.effectiveness = self._calculate_initial_effectiveness(
-                log.status_before, update.status_after
-            )
+        log.effectiveness = self._compute_effectiveness(
+            status_before=log.status_before,
+            status_after=log.status_after,
+            observation_result=log.observation_result,
+            follow_up_observations=log.follow_up_observations
+        )
 
         log.updated_at = datetime.now()
         return log
@@ -239,14 +254,8 @@ class MaintenanceLogService:
         zone: Zone,
         plants_db: Dict[str, Plant]
     ) -> ZoneAnalysisSummary:
-        zone_logs = self.get_zone_logs(zone.id)
+        all_logs = self.get_zone_logs(zone.id, zone=zone)
         plant_ids = set(zone.plant_ids)
-
-        plant_logs = [
-            log for log in self.logs_db.values()
-            if log.target_type == "plant" and log.target_id in plant_ids
-        ]
-        all_logs = zone_logs + plant_logs
 
         total_ops = len(all_logs)
         effective_ops = sum(
@@ -302,26 +311,68 @@ class MaintenanceLogService:
             analysis_time=datetime.now()
         )
 
-    def _calculate_initial_effectiveness(
+    def _compute_effectiveness(
         self,
         status_before: PlantStatus,
-        status_after: PlantStatus
+        status_after: Optional[PlantStatus] = None,
+        observation_result: Optional[str] = None,
+        follow_up_observations: Optional[List[Dict]] = None
     ) -> OperationEffectiveness:
-        if status_before.health_score is None or status_after.health_score is None:
+        observations = follow_up_observations or []
+        latest_status = status_after
+        latest_notes = observation_result
+
+        if observations:
+            latest_obs = observations[-1]
+            latest_status_data = latest_obs.get("current_status")
+            if latest_status_data:
+                try:
+                    latest_status = PlantStatus(**latest_status_data)
+                except Exception:
+                    pass
+            if latest_obs.get("observation_notes"):
+                latest_notes = latest_obs.get("observation_notes")
+
+        if status_before.health_score is None:
             return OperationEffectiveness.PENDING
 
-        score_diff = status_after.health_score - status_before.health_score
+        score = 50
 
-        if score_diff >= 20:
+        if latest_status and latest_status.health_score is not None:
+            health_change = latest_status.health_score - status_before.health_score
+            score += health_change * 0.8
+
+        if latest_notes:
+            if "好转" in latest_notes or "改善" in latest_notes or "有效" in latest_notes:
+                score += 10
+            elif "恶化" in latest_notes or "无效" in latest_notes or "加重" in latest_notes:
+                score -= 15
+
+        score = max(0, min(100, score))
+
+        if score >= 80:
             return OperationEffectiveness.VERY_EFFECTIVE
-        elif score_diff >= 10:
+        elif score >= 60:
             return OperationEffectiveness.EFFECTIVE
-        elif score_diff >= 0:
+        elif score >= 40:
             return OperationEffectiveness.PARTIALLY_EFFECTIVE
-        elif score_diff >= -10:
+        elif score >= 20:
             return OperationEffectiveness.INEFFECTIVE
         else:
             return OperationEffectiveness.HARMFUL
+
+    def _calculate_initial_effectiveness(
+        self,
+        status_before: PlantStatus,
+        status_after: Optional[PlantStatus] = None,
+        observation_result: Optional[str] = None
+    ) -> OperationEffectiveness:
+        return self._compute_effectiveness(
+            status_before=status_before,
+            status_after=status_after,
+            observation_result=observation_result,
+            follow_up_observations=[]
+        )
 
     def _analyze_environmental_factors(
         self,
@@ -563,22 +614,32 @@ class MaintenanceLogService:
         pest_factors: Dict,
         anomaly_factors: Dict
     ) -> Tuple[int, OperationEffectiveness]:
-        score = 50
+        base_effectiveness = self._compute_effectiveness(
+            status_before=log.status_before,
+            status_after=log.status_after,
+            observation_result=log.observation_result,
+            follow_up_observations=log.follow_up_observations
+        )
 
-        if log.status_after and log.status_after.health_score is not None:
-            if log.status_before.health_score is not None:
-                health_change = log.status_after.health_score - log.status_before.health_score
-                score += health_change * 0.8
+        effectiveness_score_map = {
+            OperationEffectiveness.VERY_EFFECTIVE: 90,
+            OperationEffectiveness.EFFECTIVE: 70,
+            OperationEffectiveness.PARTIALLY_EFFECTIVE: 50,
+            OperationEffectiveness.INEFFECTIVE: 30,
+            OperationEffectiveness.HARMFUL: 10,
+            OperationEffectiveness.PENDING: 50,
+        }
+        score = effectiveness_score_map.get(base_effectiveness, 50)
 
         if water_factors.get("operation_aligns_with_need"):
-            score += 10
+            score += 5
         elif water_factors.get("operation_aligns_with_need") is False:
-            score -= 15
+            score -= 5
 
         if anomaly_factors.get("operation_addresses_anomaly"):
-            score += 10
+            score += 5
         elif anomaly_factors.get("operation_addresses_anomaly") is False:
-            score -= 10
+            score -= 5
 
         if env_factors.get("environmental_stress"):
             if log.operation_type in [
@@ -587,7 +648,7 @@ class MaintenanceLogService:
                 MaintenanceOperationType.TEMPERATURE_ADJUSTMENT,
                 MaintenanceOperationType.LIGHT_ADJUSTMENT
             ]:
-                score += 10
+                score += 5
 
         if pest_factors.get("active_pest_disease"):
             if log.operation_type in [
@@ -597,13 +658,7 @@ class MaintenanceLogService:
                 MaintenanceOperationType.REMOVE_DISEASED_LEAVES,
                 MaintenanceOperationType.ISOLATION
             ]:
-                score += 10
-
-        if log.observation_result:
-            if "好转" in log.observation_result or "改善" in log.observation_result or "有效" in log.observation_result:
-                score += 10
-            elif "恶化" in log.observation_result or "无效" in log.observation_result or "加重" in log.observation_result:
-                score -= 15
+                score += 5
 
         score = max(0, min(100, score))
 
@@ -958,25 +1013,12 @@ class MaintenanceLogService:
         return "".join(parts)
 
     def _reassess_effectiveness(self, log: MaintenanceLog) -> None:
-        if not log.follow_up_observations:
-            return
-
-        observations = log.follow_up_observations
-        latest = observations[-1]
-        latest_hs = latest.get("current_status", {}).get("health_score")
-
-        if latest_hs is not None and log.status_before.health_score is not None:
-            score_diff = latest_hs - log.status_before.health_score
-            if score_diff >= 20:
-                log.effectiveness = OperationEffectiveness.VERY_EFFECTIVE
-            elif score_diff >= 10:
-                log.effectiveness = OperationEffectiveness.EFFECTIVE
-            elif score_diff >= 0:
-                log.effectiveness = OperationEffectiveness.PARTIALLY_EFFECTIVE
-            elif score_diff >= -10:
-                log.effectiveness = OperationEffectiveness.INEFFECTIVE
-            else:
-                log.effectiveness = OperationEffectiveness.HARMFUL
+        log.effectiveness = self._compute_effectiveness(
+            status_before=log.status_before,
+            status_after=log.status_after,
+            observation_result=log.observation_result,
+            follow_up_observations=log.follow_up_observations
+        )
 
     def _generate_plant_suggestions(
         self,
@@ -1284,15 +1326,18 @@ class MaintenanceLogService:
     def get_statistics(
         self,
         target_type: Optional[str] = None,
-        target_id: Optional[str] = None
+        target_id: Optional[str] = None,
+        zone: Optional[Zone] = None
     ) -> Dict[str, Any]:
-        logs = list(self.logs_db.values())
-
-        if target_type and target_id:
-            logs = [
-                log for log in logs
-                if log.target_type == target_type and log.target_id == target_id
-            ]
+        if target_type == "zone" and target_id and zone:
+            logs = self.get_zone_logs(target_id, zone=zone)
+        else:
+            logs = list(self.logs_db.values())
+            if target_type and target_id:
+                logs = [
+                    log for log in logs
+                    if log.target_type == target_type and log.target_id == target_id
+                ]
 
         total = len(logs)
         effectiveness_dist = Counter(log.effectiveness.value for log in logs)
