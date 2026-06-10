@@ -429,6 +429,29 @@ async def get_reminders(
     )
 
 
+@router.get("/reminders/statistics", response_model=ApiResponse, summary="获取提醒统计信息")
+async def get_reminder_statistics(
+    request: Request,
+    zone_id: str = None
+):
+    reminder_service = request.app.state.reminder_service
+
+    try:
+        stats = reminder_service.get_reminder_statistics(zone_id)
+    except Exception as e:
+        return api_response(
+            code=500,
+            message=f"获取统计信息失败: {str(e)}",
+            data=None
+        )
+
+    return api_response(
+        code=200,
+        message="获取提醒统计信息成功",
+        data=stats
+    )
+
+
 @router.get("/reminders/{reminder_id}", response_model=ApiResponse, summary="获取单个提醒详情")
 async def get_reminder(
     request: Request,
@@ -490,6 +513,24 @@ async def dismiss_reminder(
     )
 
 
+@router.post("/reminders/{reminder_id}/send", response_model=ApiResponse, summary="标记提醒为已发送")
+async def mark_reminder_sent(
+    request: Request,
+    reminder_id: str
+):
+    reminder_service = request.app.state.reminder_service
+
+    reminder = reminder_service.update_reminder_status(reminder_id, ReminderStatus.SENT)
+    if not reminder:
+        return api_response(code=404, message=f"提醒ID {reminder_id} 不存在", data=None)
+
+    return api_response(
+        code=200,
+        message="提醒已标记为已发送",
+        data=reminder.model_dump(mode="json")
+    )
+
+
 @router.delete("/reminders", response_model=ApiResponse, summary="清除提醒")
 async def clear_reminders(
     request: Request,
@@ -511,44 +552,3 @@ async def clear_reminders(
             message=f"已清除所有 {count} 条提醒",
             data={"cleared_count": count}
         )
-
-
-@router.get("/reminders/statistics", response_model=ApiResponse, summary="获取提醒统计信息")
-async def get_reminder_statistics(
-    request: Request,
-    zone_id: str = None
-):
-    reminder_service = request.app.state.reminder_service
-
-    try:
-        stats = reminder_service.get_reminder_statistics(zone_id)
-    except Exception as e:
-        return api_response(
-            code=500,
-            message=f"获取统计信息失败: {str(e)}",
-            data=None
-        )
-
-    return api_response(
-        code=200,
-        message="获取提醒统计信息成功",
-        data=stats
-    )
-
-
-@router.post("/reminders/{reminder_id}/send", response_model=ApiResponse, summary="标记提醒为已发送")
-async def mark_reminder_sent(
-    request: Request,
-    reminder_id: str
-):
-    reminder_service = request.app.state.reminder_service
-
-    reminder = reminder_service.update_reminder_status(reminder_id, ReminderStatus.SENT)
-    if not reminder:
-        return api_response(code=404, message=f"提醒ID {reminder_id} 不存在", data=None)
-
-    return api_response(
-        code=200,
-        message="提醒已标记为已发送",
-        data=reminder.model_dump(mode="json")
-    )
