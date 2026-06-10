@@ -35,3 +35,14 @@ from models.maintenance_log import (
     AdjustmentSuggestion as MaintenanceAdjustmentSuggestion,
     ZoneAnalysisSummary
 )
+from models.consumable import (
+    ConsumableCategory, StorageCondition, SupplierInfo,
+    ConsumableCreate, ConsumableUpdate, Consumable,
+    StockAdjustment, StockTransaction,
+    ConsumptionEstimate, StockRiskLevel, ExpiryRiskLevel,
+    StockRiskAssessment, SubstituteFeasibility,
+    ProcurementPriority, ProcurementItem, RestockSuggestion,
+    ExpiryAlert, CostOverview, AdjustmentType as ConsumableAdjustmentType,
+    AdjustmentSuggestion as ConsumableAdjustmentSuggestion,
+    ConsumableAssessmentResponse
+)
