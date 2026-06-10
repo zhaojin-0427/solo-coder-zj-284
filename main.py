@@ -15,12 +15,14 @@ from models import (
 from watering_engine import WateringEngine
 from plant_database import PLANT_DATABASE, get_plant_info
 from services import (
-    ZoneService, ScheduleService, ConflictService, PestDiseaseService
+    ZoneService, ScheduleService, ConflictService, PestDiseaseService,
+    MaintenanceLogService
 )
 from services.reminder_service import ReminderService
 from zone_routes.zones import router as zones_router
 from zone_routes.schedules import router as schedules_router
 from zone_routes.pest_disease import router as pest_disease_router
+from zone_routes.maintenance_log import router as maintenance_log_router
 
 
 plants_db: Dict[str, Plant] = {}
@@ -44,12 +46,14 @@ async def lifespan(app: FastAPI):
     schedule_service = ScheduleService(watering_engine, conflict_service)
     reminder_service = ReminderService(watering_engine)
     pest_disease_service = PestDiseaseService(watering_engine)
+    maintenance_log_service = MaintenanceLogService(watering_engine, pest_disease_service)
 
     app.state.zone_service = zone_service
     app.state.schedule_service = schedule_service
     app.state.conflict_service = conflict_service
     app.state.reminder_service = reminder_service
     app.state.pest_disease_service = pest_disease_service
+    app.state.maintenance_log_service = maintenance_log_service
     app.state.plants_db = plants_db
     app.state.watering_engine = watering_engine
 
@@ -66,6 +70,7 @@ app = FastAPI(
 app.include_router(zones_router)
 app.include_router(schedules_router)
 app.include_router(pest_disease_router)
+app.include_router(maintenance_log_router)
 
 
 @app.exception_handler(RequestValidationError)

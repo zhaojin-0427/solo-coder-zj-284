@@ -20,10 +20,18 @@ from models.schedule import (
 )
 from models.pest_disease import (
     SymptomType, PestType, DiseaseType,
-    SeverityLevel, RiskLevel, LeafCondition,
+    SeverityLevel, RiskLevel as PestRiskLevel, LeafCondition,
     PestSignReport, SymptomReport,
     PestDiseaseCreate, PestDiseaseRecord,
     TreatmentStep, QuarantineAdvice, ReviewReminder,
     ZoneSpreadRisk, ActionableAdvice,
     PestDiseaseAnalysis, TreatmentUpdate, RecordStatusUpdate
+)
+from models.maintenance_log import (
+    MaintenanceOperationType, OperationEffectiveness,
+    RecoveryTrend, AdjustmentType, RiskLevel,
+    PlantStatus, MaintenanceLogCreate, MaintenanceLogUpdate,
+    MaintenanceLog, FollowUpObservation, OperationAnalysis,
+    AdjustmentSuggestion as MaintenanceAdjustmentSuggestion,
+    ZoneAnalysisSummary
 )
